@@ -10,7 +10,7 @@ for val set, extract the subset val-300
 '''
 import os
 import time
-from basicsr.utils.create_lmdb import create_lmdb_for_reds
+# from basicsr.utils.create_lmdb import create_lmdb_for_reds
 
 def make_val_300(folder, dst):
     if not os.path.exists(dst):
@@ -58,6 +58,6 @@ if __name__ == '__main__':
     # make_val_300('./datasets/REDS/val/val_blur_jpeg', './datasets/REDS/val/blur_300')
     # make_val_300('./datasets/REDS/val/val_sharp', './datasets/REDS/val/sharp_300')
 
-    create_lmdb_for_reds()
+    # create_lmdb_for_reds()
 
 

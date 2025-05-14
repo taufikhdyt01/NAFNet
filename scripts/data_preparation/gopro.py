@@ -13,7 +13,7 @@ from os import path as osp
 from tqdm import tqdm
 
 from basicsr.utils import scandir
-from basicsr.utils.create_lmdb import create_lmdb_for_gopro
+# from basicsr.utils.create_lmdb import create_lmdb_for_gopro
 
 def main():
     opt = {}
@@ -34,7 +34,7 @@ def main():
     opt['thresh_size'] = 0
     extract_subimages(opt)
 
-    create_lmdb_for_gopro()
+    # create_lmdb_for_gopro()
 
 
 def extract_subimages(opt):

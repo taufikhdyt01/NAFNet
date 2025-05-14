@@ -16,7 +16,7 @@ import torch
 from torch.utils.cpp_extension import (BuildExtension, CppExtension,
                                        CUDAExtension)
 
-version_file = 'basicsr/version.py'
+version_file = '/mnt/extended-home/dheazalfarani/NAFNet/version.py'
 
 
 def readme():
@@ -68,21 +68,40 @@ def get_hash():
 
 
 def write_version_py():
+    import os
+    import time
+
+    # Dapatkan direktori tempat file setup.py berada
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    version_path = os.path.join(base_dir, 'VERSION')
+
     content = """# GENERATED VERSION FILE
 # TIME: {}
 __version__ = '{}'
+__git_version__ = '{}'
 short_version = '{}'
 version_info = ({})
 """
-    sha = get_hash()
-    with open('VERSION', 'r') as f:
-        SHORT_VERSION = f.read().strip()
-    VERSION_INFO = ', '.join(
-        [x if x.isdigit() else f'"{x}"' for x in SHORT_VERSION.split('.')])
-    VERSION = SHORT_VERSION + '+' + sha
 
-    version_file_str = content.format(time.asctime(), VERSION, SHORT_VERSION,
-                                      VERSION_INFO)
+    sha = get_hash()  # Misal sha = 'abc1234'
+    with open(version_path, 'r') as f:
+        SHORT_VERSION = f.read().strip()  # Misal SHORT_VERSION = '1.3.3'
+
+    VERSION_INFO = ', '.join(
+        [x if x.isdigit() else f'"{x}"' for x in SHORT_VERSION.split('.')])  # '1, 3, 3'
+    VERSION = SHORT_VERSION + '+' + sha  # '1.3.3+abc1234'
+
+    version_file_str = content.format(
+        time.asctime(),  # Contoh: 'Wed May 14 05:14:41 2025'
+        VERSION,
+        sha,
+        SHORT_VERSION,
+        VERSION_INFO
+    )
+
+    # Pastikan variabel version_file sudah didefinisikan, misal:
+    version_file = os.path.join(base_dir, 'version.py')
+
     with open(version_file, 'w') as f:
         f.write(version_file_str)
 
@@ -90,7 +109,13 @@ version_info = ({})
 def get_version():
     with open(version_file, 'r') as f:
         exec(compile(f.read(), version_file, 'exec'))
-    return locals()['__version__']
+        # print('version_file', locals())
+        # if '__version__' not in locals():
+        #     raise RuntimeError(
+        #         'Unable to find version string in {}.'.format(version_file))
+        # if '__git_version__' in locals():
+        #     print('git_version', locals()['__git_version__'])
+    return globals()['__version__']
 
 
 def make_cuda_ext(name, module, sources, sources_cuda=None):
@@ -156,7 +181,7 @@ if __name__ == '__main__':
     write_version_py()
     setup(
         name='basicsr',
-        version=get_version(),
+        version='1.3.1+87f121d',
         description='Open Source Image and Video Super-Resolution Toolbox',
         long_description=readme(),
         author='Xintao Wang',
