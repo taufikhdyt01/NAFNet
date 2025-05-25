@@ -15,13 +15,12 @@ from tqdm import tqdm
 from basicsr.utils import scandir_SIDD
 from basicsr.utils.create_lmdb import create_lmdb_for_SIDD
 
-
 def main():
     opt = {}
     opt['n_thread'] = 20
     opt['compression_level'] = 3
 
-    opt['input_folder'] = './datasets/SIDD/Data'
+    opt['input_folder'] = '/mnt/extended-home/dheazalfarani/NAFNet/datasets/SIDD/Data/train'
     opt['save_folder'] = './datasets/SIDD/train/input_crops'
     opt['crop_size'] = 512
     opt['step'] = 384

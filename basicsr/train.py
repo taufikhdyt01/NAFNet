@@ -23,7 +23,7 @@ from basicsr.utils import (MessageLogger, check_resume, get_env_info,
                            set_random_seed)
 from basicsr.utils.dist_util import get_dist_info, init_dist
 from basicsr.utils.options import dict2str, parse
-
+import torch.distributed as dist
 
 def parse_options(is_train=True):
     parser = argparse.ArgumentParser()
@@ -93,18 +93,34 @@ def init_loggers(opt):
         tb_logger = init_tb_logger(log_dir=osp.join('logs', opt['name']))
     return logger, tb_logger
 
+import numpy as np
+from torch.utils.data import Subset
 
 def create_train_val_dataloader(opt, logger):
     # create train and val dataloaders
     train_loader, val_loader = None, None
+    train_sampler = None
+    total_epochs, total_iters = None, None
+
+    subset_ratio = 0.01  # 1% dari dataset
+
     for phase, dataset_opt in opt['datasets'].items():
         if phase == 'train':
             dataset_enlarge_ratio = dataset_opt.get('dataset_enlarge_ratio', 1)
             train_set = create_dataset(dataset_opt)
-            train_sampler = EnlargedSampler(train_set, opt['world_size'],
+
+            # Ambil 1% subset dari train_set
+            total_train = len(train_set)
+            subset_size = max(1, int(total_train * subset_ratio))  # minimal 1 data
+            indices = np.random.choice(total_train, subset_size, replace=False)
+            train_subset = Subset(train_set, indices)
+
+            # Buat sampler dari subset dataset
+            train_sampler = EnlargedSampler(train_subset, opt['world_size'],
                                             opt['rank'], dataset_enlarge_ratio)
+
             train_loader = create_dataloader(
-                train_set,
+                train_subset,
                 dataset_opt,
                 num_gpu=opt['num_gpu'],
                 dist=opt['dist'],
@@ -112,13 +128,13 @@ def create_train_val_dataloader(opt, logger):
                 seed=opt['manual_seed'])
 
             num_iter_per_epoch = math.ceil(
-                len(train_set) * dataset_enlarge_ratio /
+                len(train_subset) * dataset_enlarge_ratio /
                 (dataset_opt['batch_size_per_gpu'] * opt['world_size']))
             total_iters = int(opt['train']['total_iter'])
             total_epochs = math.ceil(total_iters / (num_iter_per_epoch))
             logger.info(
                 'Training statistics:'
-                f'\n\tNumber of train images: {len(train_set)}'
+                f'\n\tNumber of train images (subset 1%): {len(train_subset)}'
                 f'\n\tDataset enlarge ratio: {dataset_enlarge_ratio}'
                 f'\n\tBatch size per gpu: {dataset_opt["batch_size_per_gpu"]}'
                 f'\n\tWorld size (gpu number): {opt["world_size"]}'
@@ -127,176 +143,219 @@ def create_train_val_dataloader(opt, logger):
 
         elif phase == 'val':
             val_set = create_dataset(dataset_opt)
+
+            # Ambil 1% subset dari val_set
+            total_val = len(val_set)
+            subset_size_val = max(1, int(total_val * subset_ratio))
+            indices_val = np.random.choice(total_val, subset_size_val, replace=False)
+            val_subset = Subset(val_set, indices_val)
+
             val_loader = create_dataloader(
-                val_set,
+                val_subset,
                 dataset_opt,
                 num_gpu=opt['num_gpu'],
                 dist=opt['dist'],
                 sampler=None,
                 seed=opt['manual_seed'])
             logger.info(
-                f'Number of val images/folders in {dataset_opt["name"]}: '
-                f'{len(val_set)}')
+                f'Number of val images/folders in {dataset_opt["name"]} (subset 1%): '
+                f'{len(val_subset)}')
         else:
             raise ValueError(f'Dataset phase {phase} is not recognized.')
 
     return train_loader, train_sampler, val_loader, total_epochs, total_iters
 
 
+def setup_distributed():
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        rank = int(os.environ['RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        dist.init_process_group(
+            backend='nccl',
+            init_method='env://',
+            world_size=world_size,
+            rank=rank
+        )
+        print(f"Distributed initialized: rank {rank}, world size {world_size}")
+        return True
+    else:
+        print("Distributed not initialized (single process)")
+        return False
+
+
 def main():
     # parse options, set distributed setting, set ramdom seed
     opt = parse_options(is_train=True)
 
-    torch.backends.cudnn.benchmark = True
-    # torch.backends.cudnn.deterministic = True
+    distributed = setup_distributed()
 
-    # automatic resume ..
-    state_folder_path = 'experiments/{}/training_states/'.format(opt['name'])
-    import os
     try:
-        states = os.listdir(state_folder_path)
-    except:
-        states = []
+        torch.backends.cudnn.benchmark = True
+        # torch.backends.cudnn.deterministic = True
+        
+        # automatic resume ..
+        state_folder_path = 'experiments/{}/training_states/'.format(opt['name'])
+        
+        try:
+            states = os.listdir(state_folder_path)
+        except:
+            states = []
 
-    resume_state = None
-    if len(states) > 0:
-        print('!!!!!! resume state .. ', states, state_folder_path)
-        max_state_file = '{}.state'.format(max([int(x[0:-6]) for x in states]))
-        resume_state = os.path.join(state_folder_path, max_state_file)
-        opt['path']['resume_state'] = resume_state
-
-    # load resume states if necessary
-    if opt['path'].get('resume_state'):
-        device_id = torch.cuda.current_device()
-        resume_state = torch.load(
-            opt['path']['resume_state'],
-            map_location=lambda storage, loc: storage.cuda(device_id))
-    else:
         resume_state = None
+        if len(states) > 0:
+            print('!!!!!! resume state .. ', states, state_folder_path)
+            max_state_file = '{}.state'.format(max([int(x[0:-6]) for x in states]))
+            resume_state = os.path.join(state_folder_path, max_state_file)
+            opt['path']['resume_state'] = resume_state
 
-    # mkdir for experiments and logger
-    if resume_state is None:
-        make_exp_dirs(opt)
-        if opt['logger'].get('use_tb_logger') and 'debug' not in opt[
-                'name'] and opt['rank'] == 0:
-            mkdir_and_rename(osp.join('tb_logger', opt['name']))
+        # load resume states if necessary
+        if opt['path'].get('resume_state'):
+            device_id = torch.cuda.current_device()
+            resume_state = torch.load(
+                opt['path']['resume_state'],
+                map_location=lambda storage, loc: storage.cuda(device_id))
+        else:
+            resume_state = None
 
-    # initialize loggers
-    logger, tb_logger = init_loggers(opt)
+        # mkdir for experiments and logger
+        if resume_state is None:
+            make_exp_dirs(opt)
+            if opt['logger'].get('use_tb_logger') and 'debug' not in opt[
+                    'name'] and opt['rank'] == 0:
+                mkdir_and_rename(osp.join('tb_logger', opt['name']))
 
-    # create train and validation dataloaders
-    result = create_train_val_dataloader(opt, logger)
-    train_loader, train_sampler, val_loader, total_epochs, total_iters = result
+        # initialize loggers
+        logger, tb_logger = init_loggers(opt)
 
-    # create model
-    if resume_state:  # resume training
-        check_resume(opt, resume_state['iter'])
-        model = create_model(opt)
-        model.resume_training(resume_state)  # handle optimizers and schedulers
-        logger.info(f"Resuming training from epoch: {resume_state['epoch']}, "
-                    f"iter: {resume_state['iter']}.")
-        start_epoch = resume_state['epoch']
-        current_iter = resume_state['iter']
-    else:
-        model = create_model(opt)
-        start_epoch = 0
-        current_iter = 0
+        # create train and validation dataloaders
+        result = create_train_val_dataloader(opt, logger)
+        train_loader, train_sampler, val_loader, total_epochs, total_iters = result
 
-    # create message logger (formatted outputs)
-    msg_logger = MessageLogger(opt, current_iter, tb_logger)
+        # create model
+        if resume_state:  # resume training
+            check_resume(opt, resume_state['iter'])
+            model = create_model(opt)
+            model.resume_training(resume_state)  # handle optimizers and schedulers
+            logger.info(f"Resuming training from epoch: {resume_state['epoch']}, "
+                        f"iter: {resume_state['iter']}.")
+            start_epoch = resume_state['epoch']
+            current_iter = resume_state['iter']
+        else:
+            model = create_model(opt)
+            start_epoch = 0
+            current_iter = 0
 
-    # dataloader prefetcher
-    prefetch_mode = opt['datasets']['train'].get('prefetch_mode')
-    if prefetch_mode is None or prefetch_mode == 'cpu':
-        prefetcher = CPUPrefetcher(train_loader)
-    elif prefetch_mode == 'cuda':
-        prefetcher = CUDAPrefetcher(train_loader, opt)
-        logger.info(f'Use {prefetch_mode} prefetch dataloader')
-        if opt['datasets']['train'].get('pin_memory') is not True:
-            raise ValueError('Please set pin_memory=True for CUDAPrefetcher.')
-    else:
-        raise ValueError(f'Wrong prefetch_mode {prefetch_mode}.'
-                         "Supported ones are: None, 'cuda', 'cpu'.")
+        # create message logger (formatted outputs)
+        msg_logger = MessageLogger(opt, current_iter, tb_logger)
 
-    # training
-    logger.info(
-        f'Start training from epoch: {start_epoch}, iter: {current_iter}')
-    data_time, iter_time = time.time(), time.time()
-    start_time = time.time()
+        # dataloader prefetcher
+        prefetch_mode = opt['datasets']['train'].get('prefetch_mode')
+        if prefetch_mode is None or prefetch_mode == 'cpu':
+            prefetcher = CPUPrefetcher(train_loader)
+        elif prefetch_mode == 'cuda':
+            prefetcher = CUDAPrefetcher(train_loader, opt)
+            logger.info(f'Use {prefetch_mode} prefetch dataloader')
+            if opt['datasets']['train'].get('pin_memory') is not True:
+                raise ValueError('Please set pin_memory=True for CUDAPrefetcher.')
+        else:
+            raise ValueError(f'Wrong prefetch_mode {prefetch_mode}.'
+                            "Supported ones are: None, 'cuda', 'cpu'.")
 
-    # for epoch in range(start_epoch, total_epochs + 1):
-    epoch = start_epoch
-    while current_iter <= total_iters:
-        train_sampler.set_epoch(epoch)
-        prefetcher.reset()
-        train_data = prefetcher.next()
-
-        while train_data is not None:
-            data_time = time.time() - data_time
-
-            current_iter += 1
-            if current_iter > total_iters:
-                break
-            # update learning rate
-            model.update_learning_rate(
-                current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
-            # training
-            model.feed_data(train_data, is_val=False)
-            result_code = model.optimize_parameters(current_iter, tb_logger)
-            # if result_code == -1 and tb_logger:
-            #     print('loss explode .. ')
-            #     exit(0)
-            iter_time = time.time() - iter_time
-            # log
-            if current_iter % opt['logger']['print_freq'] == 0:
-                log_vars = {'epoch': epoch, 'iter': current_iter, 'total_iter': total_iters}
-                log_vars.update({'lrs': model.get_current_learning_rate()})
-                log_vars.update({'time': iter_time, 'data_time': data_time})
-                log_vars.update(model.get_current_log())
-                # print('msg logger .. ', current_iter)
-                msg_logger(log_vars)
-
-            # save models and training states
-            if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
-                logger.info('Saving models and training states.')
-                model.save(epoch, current_iter)
-
-            # validation
-            if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0 or current_iter == 1000):
-            # if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
-                rgb2bgr = opt['val'].get('rgb2bgr', True)
-                # wheather use uint8 image to compute metrics
-                use_image = opt['val'].get('use_image', True)
-                model.validation(val_loader, current_iter, tb_logger,
-                                 opt['val']['save_img'], rgb2bgr, use_image )
-                log_vars = {'epoch': epoch, 'iter': current_iter, 'total_iter': total_iters}
-                log_vars.update({'lrs': model.get_current_learning_rate()})
-                log_vars.update(model.get_current_log())
-                msg_logger(log_vars)
-
-
-            data_time = time.time()
-            iter_time = time.time()
+        # training
+        logger.info(
+            f'Start training from epoch: {start_epoch}, iter: {current_iter}')
+        data_time, iter_time = time.time(), time.time()
+        start_time = time.time()
+        
+        # for epoch in range(start_epoch, total_epochs + 1):
+        epoch = start_epoch
+        while current_iter <= total_iters:
+            train_sampler.set_epoch(epoch)
+            prefetcher.reset()
             train_data = prefetcher.next()
-        # end of iter
-        epoch += 1
 
-    # end of epoch
+            while train_data is not None:
+                data_time = time.time() - data_time
+                print(f'iter: {current_iter}')
+                current_iter += 1
 
-    consumed_time = str(
-        datetime.timedelta(seconds=int(time.time() - start_time)))
-    logger.info(f'End of training. Time consumed: {consumed_time}')
-    logger.info('Save the latest model.')
-    model.save(epoch=-1, current_iter=-1)  # -1 stands for the latest
-    if opt.get('val') is not None:
-        rgb2bgr = opt['val'].get('rgb2bgr', True)
-        use_image = opt['val'].get('use_image', True)
-        metric = model.validation(val_loader, current_iter, tb_logger,
-                         opt['val']['save_img'], rgb2bgr, use_image)
-        # if tb_logger:
-        #     print('xxresult! ', opt['name'], ' ', metric)
-    if tb_logger:
-        tb_logger.close()
+                if current_iter > total_iters:
+                    break
+                # update learning rate
+                model.update_learning_rate(
+                    current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
+                # training
+                model.feed_data(train_data, is_val=False)
+                result_code = model.optimize_parameters(current_iter, tb_logger)
+                # if result_code == -1 and tb_logger:
+                #     print('loss explode .. ')
+                #     exit(0)
+                iter_time = time.time() - iter_time
+                # log
+                if current_iter % opt['logger']['print_freq'] == 0:
+                    log_vars = {'epoch': epoch, 'iter': current_iter, 'total_iter': total_iters}
+                    log_vars.update({'lrs': model.get_current_learning_rate()})
+                    log_vars.update({'time': iter_time, 'data_time': data_time})
+                    log_vars.update(model.get_current_log())
+                    # print('msg logger .. ', current_iter)
+                    msg_logger(log_vars)
+
+                # save models and training states
+                if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
+                    logger.info('Saving models and training states.')
+                    model.save(epoch, current_iter)
+
+                # validation
+                if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0 or current_iter == 1000):
+                # if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
+                    rgb2bgr = opt['val'].get('rgb2bgr', True)
+                    # wheather use uint8 image to compute metrics
+                    use_image = opt['val'].get('use_image', True)
+                    model.validation(val_loader, current_iter, tb_logger,
+                                    opt['val']['save_img'], rgb2bgr, use_image )
+                    log_vars = {'epoch': epoch, 'iter': current_iter, 'total_iter': total_iters}
+                    log_vars.update({'lrs': model.get_current_learning_rate()})
+                    log_vars.update(model.get_current_log())
+                    msg_logger(log_vars)
+
+
+                data_time = time.time()
+                iter_time = time.time()
+                train_data = prefetcher.next()
+            # end of iter
+            epoch += 1
+
+        # end of epoch
+
+        consumed_time = str(
+            datetime.timedelta(seconds=int(time.time() - start_time)))
+        logger.info(f'End of training. Time consumed: {consumed_time}')
+        logger.info('Save the latest model.')
+        logger.info(f'itter: {current_iter}')
+        
+
+        model.save(epoch=-1, current_iter=-1)  # -1 stands for the latest
+        logger.info(f'lates itter: {current_iter}')
+        if opt.get('val') is not None:
+            rgb2bgr = opt['val'].get('rgb2bgr', True)
+            use_image = opt['val'].get('use_image', True)
+            print('xxresult! ', opt['name'])
+            name = opt['name']
+            print('xxresult! ', name, ' ', opt['val']['save_img'])
+            print('xxresult! ', rgb2bgr, ' ', use_image)
+            print('xxresult! ', val_loader, ' ', current_iter, ' ', tb_logger)
+            metric = model.validation(val_loader, current_iter, tb_logger,
+                            opt['val']['save_img'], rgb2bgr, use_image,name)
+            if tb_logger:
+                print('xxresult! ', opt['name'], ' ', metric)
+        if tb_logger:
+            tb_logger.close()
+    finally:
+        # dist.destroy_process_group()
+        print('Training finished.')
+    
+
+    
 
 
 if __name__ == '__main__':

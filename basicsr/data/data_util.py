@@ -234,11 +234,15 @@ def paired_paths_from_folder(folders, keys, filename_tmpl):
     input_folder, gt_folder = folders
     input_key, gt_key = keys
 
-    input_paths = list(scandir(input_folder))
-    gt_paths = list(scandir(gt_folder))
+    # Filter hanya file gambar umum saja (abaikan file seperti lock.mdb dll)
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
+    input_paths = [f for f in scandir(input_folder) if f.lower().endswith(valid_extensions)]
+    gt_paths = [f for f in scandir(gt_folder) if f.lower().endswith(valid_extensions)]
+
     assert len(input_paths) == len(gt_paths), (
         f'{input_key} and {gt_key} datasets have different number of images: '
         f'{len(input_paths)}, {len(gt_paths)}.')
+    
     paths = []
     for idx in range(len(gt_paths)):
         gt_path = gt_paths[idx]
@@ -254,6 +258,7 @@ def paired_paths_from_folder(folders, keys, filename_tmpl):
             dict([(f'{input_key}_path', input_path),
                   (f'{gt_key}_path', gt_path)]))
     return paths
+
 
 
 def paths_from_folder(folder):

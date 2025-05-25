@@ -23,8 +23,16 @@
 
   ```
   python -m torch.distributed.launch --nproc_per_node=8 --master_port=4321 basicsr/train.py -opt options/train/GoPro/NAFNet-width32.yml --launcher pytorch
+  
   ```
+#Ganti jalankan ini (putri)
+```
+torchrun --nproc_per_node=8 --master_port=4321 NAFNet/basicsr/train.py -opt NAFNet/options/train/GoPro/NAFNet-width32.yml --launcher pytorch
 
+CUDA_VISIBLE_DEVICES=2 python NAFNet/basicsr/train.py -opt NAFNet/opt
+ions/train/GoPro/NAFNet-width32.yml
+
+```
 * NAFNet-GoPro-width64:
 
   ```

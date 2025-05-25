@@ -253,8 +253,8 @@ class ImageRestorationModel(BaseModel):
             self.output = torch.cat(outs, dim=0)
         self.net_g.train()
 
-    def dist_validation(self, dataloader, current_iter, tb_logger, save_img, rgb2bgr, use_image):
-        dataset_name = dataloader.dataset.opt['name']
+    def dist_validation(self, dataloader, current_iter, tb_logger, save_img, rgb2bgr, use_image, name):
+        dataset_name = name
         with_metrics = self.opt['val'].get('metrics') is not None
         if with_metrics:
             self.metric_results = {
@@ -375,7 +375,7 @@ class ImageRestorationModel(BaseModel):
             for key in metrics_dict:
                 metrics_dict[key] /= cnt
 
-            self._log_validation_metric_values(current_iter, dataloader.dataset.opt['name'],
+            self._log_validation_metric_values(current_iter, name,
                                                tb_logger, metrics_dict)
         return 0.
 

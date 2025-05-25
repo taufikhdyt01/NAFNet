@@ -4,6 +4,7 @@
 # Modified from BasicSR (https://github.com/xinntao/BasicSR)
 # Copyright 2018-2020 BasicSR Authors
 # ------------------------------------------------------------------------
+#  torchrun --nproc_per_node=1 NAFNet/basicsr/test.py -opt NAFNet/options/test/GoPro/NAFNet-width32.yml
 # general settings
 name: NAFNet-GoPro-width32-test
 model_type: ImageRestorationModel
@@ -18,8 +19,8 @@ datasets:
     name: gopro-test
     type: PairedImageDataset
 
-    dataroot_gt: ./datasets/GoPro/test/target.lmdb
-    dataroot_lq: ./datasets/GoPro/test/input.lmdb
+    dataroot_gt:  NAFNet/datasets/GoPro/test/target.lmdb
+    dataroot_lq:  NAFNet/datasets/GoPro/test/input.lmdb
 
     io_backend:
       type: lmdb

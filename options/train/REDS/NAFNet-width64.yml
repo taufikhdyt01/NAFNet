@@ -8,15 +8,15 @@
 name: NAFNet-REDS-width64
 model_type: ImageRestorationModel
 scale: 1
-num_gpu: 8
+num_gpu: 3
 manual_seed: 10
 
 datasets:
   train:
     name: reds-train
     type: PairedImageDataset
-    dataroot_gt: ./datasets/REDS/train/train_sharp.lmdb
-    dataroot_lq: ./datasets/REDS/train/train_blur_jpeg.lmdb
+    dataroot_gt: /mnt/extended-home/dheazalfarani/NAFNet/datasets/REDS/val/REDS/val/sharp_300.lmdb
+    dataroot_lq: /mnt/extended-home/dheazalfarani/NAFNet/datasets/REDS/val/REDS/val/blur_300.lmdb
 
     filename_tmpl: '{}'
     io_backend:
@@ -28,16 +28,16 @@ datasets:
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 2
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
   val:
     name: reds-val300-test
     type: PairedImageDataset
-    dataroot_gt: ./datasets/REDS/val/sharp_300.lmdb
-    dataroot_lq: ./datasets/REDS/val/blur_300.lmdb
+    dataroot_gt: /mnt/extended-home/dheazalfarani/NAFNet/datasets/REDS/val/REDS/val/sharp_300.lmdb
+    dataroot_lq: /mnt/extended-home/dheazalfarani/NAFNet/datasets/REDS/val/REDS/val/blur_300.lmdb
     io_backend:
       type: lmdb
 

@@ -40,7 +40,7 @@ class BaseModel():
         """Save networks and training state."""
         pass
 
-    def validation(self, dataloader, current_iter, tb_logger, save_img=False, rgb2bgr=True, use_image=True):
+    def validation(self, dataloader, current_iter, tb_logger, save_img=False, rgb2bgr=True, use_image=True,name="a"):
         """Validation function.
 
         Args:
@@ -54,8 +54,9 @@ class BaseModel():
         if self.opt['dist']:
             return self.dist_validation(dataloader, current_iter, tb_logger, save_img, rgb2bgr, use_image)
         else:
+            
             return self.nondist_validation(dataloader, current_iter, tb_logger,
-                                    save_img, rgb2bgr, use_image)
+                                    save_img, rgb2bgr, use_image, name)
 
     def get_current_log(self):
         return self.log_dict
@@ -273,6 +274,8 @@ class BaseModel():
         net = self.get_bare_model(net)
         logger.info(
             f'Loading {net.__class__.__name__} model from {load_path}.')
+        print('Loading here the rat {} model from {}.'.format(
+            net.__class__.__name__, load_path))
         load_net = torch.load(
             load_path, map_location=lambda storage, loc: storage)
         if param_key is not None:

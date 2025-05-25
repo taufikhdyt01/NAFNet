@@ -4,6 +4,14 @@
 # Modified from BasicSR (https://github.com/xinntao/BasicSR)
 # Copyright 2018-2020 BasicSR Authors
 # ------------------------------------------------------------------------
+#  torchrun --nproc_per_node=1 NAFNet/basicsr/train.py -opt NAFNet/options/train/GoPro/NAFNet-width32.yml
+
+# dataroot_gt: NAFNet/datasets/GoPro/train/sharp_crops.lmdb
+# dataroot_lq: NAFNet/datasets/GoPro/train/blur_crops.lmdb
+# dataroot_gt:  NAFNet/datasets/GoPro/test/target.lmdb
+# dataroot_lq:  NAFNet/datasets/GoPro/test/input.lmdb
+
+
 # general settings
 name: NAFNet-GoPro-width32
 model_type: ImageRestorationModel
@@ -15,8 +23,8 @@ datasets:
   train:
     name: gopro-train
     type: PairedImageDataset
-    dataroot_gt: ./datasets/GoPro/train/sharp_crops.lmdb
-    dataroot_lq: ./datasets/GoPro/train/blur_crops.lmdb
+    dataroot_gt: NAFNet/datasets/GoPro/train/sharp_crops.lmdb
+    dataroot_lq: NAFNet/datasets/GoPro/train/blur_crops.lmdb
 
     filename_tmpl: '{}'
     io_backend:
@@ -36,10 +44,14 @@ datasets:
   val:
     name: gopro-test
     type: PairedImageDataset
-    dataroot_gt: ./datasets/GoPro/test/target.lmdb
-    dataroot_lq: ./datasets/GoPro/test/input.lmdb
+    dataroot_gt:  NAFNet/datasets/GoPro/test/target.lmdb
+    dataroot_lq:  NAFNet/datasets/GoPro/test/input.lmdb
     io_backend:
       type: lmdb
+    rgb2bgr : true
+    use_image: true
+    save_img: false
+    
 
 
 network_g:
@@ -68,7 +80,7 @@ train:
     T_max: 200000
     eta_min: !!float 1e-7
 
-  total_iter: 200000
+  total_iter: 5
   warmup_iter: -1 # no warm up
 
   # losses

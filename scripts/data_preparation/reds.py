@@ -10,7 +10,7 @@ for val set, extract the subset val-300
 '''
 import os
 import time
-# from basicsr.utils.create_lmdb import create_lmdb_for_reds
+from basicsr.utils.create_lmdb import create_lmdb_for_reds
 
 def make_val_300(folder, dst):
     if not os.path.exists(dst):

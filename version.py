@@ -1,6 +1,6 @@
 # GENERATED VERSION FILE
-# TIME: Wed May 14 12:57:05 2025
-__version__ = '1.3.1+87f121d'
-__git_version__ = '87f121d'
+# TIME: Fri May 16 12:57:11 2025
+__version__ = '1.3.1+4329dea'
+__git_version__ = '4329dea'
 short_version = '1.3.1'
 version_info = (1, 3, 1)

@@ -13,28 +13,28 @@ from os import path as osp
 from tqdm import tqdm
 
 from basicsr.utils import scandir
-# from basicsr.utils.create_lmdb import create_lmdb_for_gopro
+from basicsr.utils.create_lmdb import create_lmdb_for_gopro
 
 def main():
     opt = {}
     opt['n_thread'] = 20
     opt['compression_level'] = 3
 
-    opt['input_folder'] = './datasets/GoPro/train/input'
-    opt['save_folder'] = './datasets/GoPro/train/blur_crops'
+    opt['input_folder'] = './NAFNet/datasets/GoPro/train/input'
+    opt['save_folder'] = './NAFNet/datasets/GoPro/train/blur_crops'
     opt['crop_size'] = 512
     opt['step'] = 256
     opt['thresh_size'] = 0
     extract_subimages(opt)
 
-    opt['input_folder'] = './datasets/GoPro/train/target'
-    opt['save_folder'] = './datasets/GoPro/train/sharp_crops'
+    opt['input_folder'] = './NAFNet/datasets/GoPro/train/target'
+    opt['save_folder'] = './NAFNet/datasets/GoPro/train/sharp_crops'
     opt['crop_size'] = 512
     opt['step'] = 256
     opt['thresh_size'] = 0
     extract_subimages(opt)
 
-    # create_lmdb_for_gopro()
+    create_lmdb_for_gopro()
 
 
 def extract_subimages(opt):
